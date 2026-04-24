@@ -4,8 +4,16 @@
 > 
 > *The newly added Web Dashboard features are currently in active development. Please expect potential bugs or instability if you enable `web.enabled` in your configuration. The core in-game economy, GUI markets, and auction house are mostly stable.*
 
-**Aurelium** is a comprehensive, standalone economy plugin for Minecraft Paper 1.21.11.
-> **Compatibility**: Paper, Purpur, Pufferfish, Leaves (1.21.x)
+**Aurelium** is a comprehensive, standalone economy plugin for Minecraft Paper.
+> **Compatibility**: Paper, Purpur, Pufferfish, Leaves
+
+| Version | Paper API | Java | Artifact | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **1.21.x** | `1.21.11-R0.1-SNAPSHOT` | 21 | `Aurelium-1.4.2.jar` | Stable |
+| **26.1.x** | `[26.1.2.build,)` | 25 | `Aurelium-1.4.2-26.1.jar` | Built & tested |
+| **26.2.x** | `[26.1.2.build,)`* | 25 | `Aurelium-1.4.2-26.2-SNAPSHOT.jar` | Preview (API pending) |
+
+*\*26.2.x compiles against 26.1.x API as 26.2.x artifacts are not yet published. Will be updated when available.*
 
 It features a multi-currency system, a flexible Server Market with three interface modes (classic chest, modern styled, or browser-based web dashboard), a player-driven Auction House, Buy Orders, and seamless Vault integration.
 
@@ -116,9 +124,9 @@ A global request system that lets players buy things they want even while offlin
 
 ## Setup
 
-1.  Download `Aurelium-1.4.2.jar`.
-2.  Place it in your server's `plugins/` folder.
-3.  **Restart** the server.
+1. Download the JAR for your Paper version (see compatibility table above).
+2. Place it in your server's `plugins/` folder.
+3. **Restart** the server.
     - *Note: If Vault is not detected, Aurelium will automatically extract and install it into your plugins folder for you upon first run.*
 
 ## Config
@@ -221,7 +229,7 @@ A `messages.yml` file is generated on startup.
 - **"Unknown Command"**: If `/market` or `/eco` says "Unknown command", the plugin failed to load.
     - Check your server console/logs for errors.
     - Ensure you have `Aurelium-1.4.2.jar` in `plugins/`.
-    - Ensure you are running **Paper 1.21.x** (or compatible forks: Purpur, Pufferfish, Leaves).
+    - Ensure you are running **Paper** 1.21.x or 26.x (or compatible forks: Purpur, Pufferfish, Leaves).
 - **"No Permission"**:
     - Ensure you are **OP** (`/op <player>`) or have the permission node `aureleconomy.admin`.
     - Note: Standard player commands (`/bal`, `/market`, `/ah`, `/sell`) are enabled for everyone by default.

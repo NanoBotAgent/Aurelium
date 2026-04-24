@@ -1,0 +1,72 @@
+package com.aureleconomy.orders;
+
+import org.bukkit.Material;
+import java.math.BigDecimal;
+import java.util.UUID;
+
+public class BuyOrder {
+    private final int id;
+    private final UUID buyerUuid;
+    private final Material material;
+    private final int amountRequested;
+    private int amountFilled;
+    private final BigDecimal pricePerPiece;
+    private final String currency;
+    private String status;
+
+    public BuyOrder(int id, UUID buyerUuid, Material material, int amountRequested, int amountFilled,
+            BigDecimal pricePerPiece, String currency, String status) {
+        this.id = id;
+        this.buyerUuid = buyerUuid;
+        this.material = material;
+        this.amountRequested = amountRequested;
+        this.amountFilled = amountFilled;
+        this.pricePerPiece = pricePerPiece;
+        this.currency = currency;
+        this.status = status;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public UUID getBuyerUuid() {
+        return buyerUuid;
+    }
+
+    public Material getMaterial() {
+        return material;
+    }
+
+    public int getAmountRequested() {
+        return amountRequested;
+    }
+
+    public int getAmountFilled() {
+        return amountFilled;
+    }
+
+    public BigDecimal getPricePerPiece() {
+        return pricePerPiece;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public int getAmountRemaining() {
+        return amountRequested - amountFilled;
+    }
+
+    public void setAmountFilled(int amountFilled) {
+        this.amountFilled = amountFilled;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+}
