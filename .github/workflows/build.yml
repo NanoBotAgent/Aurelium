@@ -459,4 +459,14 @@ jobs:
           grep -i "aurel\|economy\|issued server command" logs/latest.log | tail -30 || true
           kill $(cat /tmp/server_pid) 2>/dev/null || true
           wait $(cat /tmp/server_pid) 2>/dev/null || true
-          exit $TEST_EXIT
+          # Dump exceptions from server log for debugging
+     grep -i "Exception\|Caused by\|Error occurred" logs/latest.log | grep -vi "PLEASE RESTART\|zip file\|Vault" | head -30 || true
+     exit $TEST_EXIT
+
+  - name: Upload server log on ingame-test failure
+    if: failure()
+    uses: actions/upload-artifact@v4
+    with:
+     name: ingame-server-log
+     path: logs/latest.log
+     retention-days: 7
