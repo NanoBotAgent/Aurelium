@@ -37,9 +37,9 @@ jobs:
       with:
         java-version: '21'
         distribution: 'temurin'
-    - name: Download Paper 1.21.4 build 232
+    - name: Download Paper 1.21.11 build 69
       run: |
-        curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.4/builds/232/downloads/paper-1.21.4-232.jar" -o paper.jar
+        curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds/69/downloads/paper-1.21.11-69.jar" -o paper.jar
         ls -lh paper.jar
     - name: Download plugin artifact
       uses: actions/download-artifact@v4
@@ -146,9 +146,9 @@ jobs:
       with:
         java-version: '21'
         distribution: 'temurin'
-    - name: Download Paper 1.21.4 build 232
+    - name: Download Paper 1.21.11 build 69
       run: |
-        curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.4/builds/232/downloads/paper-1.21.4-232.jar" -o paper.jar
+        curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds/69/downloads/paper-1.21.11-69.jar" -o paper.jar
     - name: Download plugin artifact
       uses: actions/download-artifact@v4
       with:
@@ -489,9 +489,9 @@ jobs:
       with:
         java-version: '21'
         distribution: 'temurin'
-    - name: Download Paper 1.21.4 build 232
+    - name: Download Paper 1.21.11 build 69
       run: |
-        curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.4/builds/232/downloads/paper-1.21.4-232.jar" -o paper.jar
+        curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds/69/downloads/paper-1.21.11-69.jar" -o paper.jar
     - name: Download plugin artifact
       uses: actions/download-artifact@v4
       with:
