@@ -1,34 +1,40 @@
 # Aurelium - Patch Notes
 
-## v1.4.5 - MySQL Compatibility & Auction Display Names
+## v1.4.5 - Paper 1.21.x Backport
 
-**Critical fix for MySQL 8.0.20+ servers and custom-named auction items.**
+**Same v1.4.5 features, adapted for Paper 1.21.4+ (Java 21).**
 
-### Fixes
-- **MySQL 8.0.20+ Compatibility**: Replaced deprecated `VALUES(col)` syntax with modern `AS new` alias syntax in all upsert queries. MySQL 8.0.20+ deprecates `VALUES(col)` and it will be removed in a future release — this update ensures forward compatibility.
-- **PreparedStatement Param Mismatch**: MySQL upserts now only set the parameters they actually use. Previously, the extra SQLite-only 4th parameter was set unconditionally, which was harmless but messy.
-- **Auction Custom Display Names**: Auction messages (outbid, new offer, offer accepted, offline earning log) now show custom item display names instead of raw material types. A renamed Iron Helmet will now show its custom name, not "IRON_HELMET". Uses `PlainTextComponentSerializer` for safe Component handling — no more `ClassCastException` risk from casting to `TextComponent`.
+### Platform Changes (from 26.1 branch)
+- **Java 21** instead of Java 25 (toolchain and `options.release` updated)
+- **Paper API `1.21.4-R0.1-SNAPSHOT`** instead of `26.1.2.build.53-stable`
+- **`api-version: '1.21'`** in plugin.yml instead of `'26.1'`
+- **Enchantment lookup**: Uses `Registry.ENCHANTMENT.get(NamespacedKey.minecraft(...))` (Bukkit registry) instead of Paper's `RegistryAccess.registryAccess().getRegistry(RegistryKey.ENCHANTMENT)` which is 26.1-only
+- **Sweeping Edge**: Keeps original Bukkit name `SWEEPING_EDGE` (the `SWEEPING_COLLISION` rename only exists in MC 26.1+)
+- CI tested against Paper 1.21.4 build 232 (build, smoke-test, ingame-test, mysql-test all pass)
+
+### Fixes (carried from 26.1 branch)
+- **MySQL 8.0.20+ Compatibility**: Replaced deprecated `VALUES(col)` syntax with modern `AS new` alias syntax in all upsert queries
+- **Auction Custom Display Names**: Auction messages now show custom item display names instead of raw material types. Uses `PlainTextComponentSerializer` for safe Component handling
+- **PreparedStatement Param Mismatch**: MySQL upserts now only set the parameters they actually use
 
 ### Testing
-- Added expanded MySQL CI test suite (10 tests) running against MySQL 8.0 service container
-- All 4 upsert code paths exercised: `deposit()`, `setBalance()`, `loadBalance()`, `updatePlayerMetadata()`
+- All 4 CI jobs pass on Paper 1.21.4: build, smoke-test, ingame-test, mysql-test
+- RCON-based in-game command testing (25 tests covering all commands)
+- MySQL 8.0 CI test suite (10 tests) against service container
 - Zero `SQLSyntaxErrorException` confirmed on MySQL 8.0
-- Added `isMySQL()` method to `DatabaseManager` for clean dialect detection
 
 ## v1.4.3 - CI & Testing Infrastructure
 
-**Automated in-game testing ensures every command works correctly on Paper 26.1.2.**
+**Automated in-game testing ensures every command works correctly.**
 
 ### Testing
 - Added RCON-based in-game command testing to GitHub Actions CI (25 tests covering all commands)
 - `/bal` variants: self, other player, with currency — all verified
 - `/eco` admin commands: give, take, set, with currency, invalid inputs (negative, non-numeric, missing args, invalid currency, invalid action)
 - Player-only commands reject console correctly: `/pay`, `/market`, `/web`, `/stocks`, `/ah` (4 subcommands), `/orders` (4 subcommands)
-- Smoke test upgraded to Paper 26.1.2 build 61 (latest)
 - All tests pass on every push — zero regressions guaranteed
 
 ### Internal
-- Updated Paper CI server from build 53 to build 61
 - Bumped version to 1.4.3 across all build files and config
 
 ## v1.4.2 - Security & Performance Hardening
