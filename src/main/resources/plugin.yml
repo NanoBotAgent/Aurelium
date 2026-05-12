@@ -1,10 +1,10 @@
 name: Aurelium
 version: '1.4.5'
 main: com.aureleconomy.AurelEconomy
-api-version: '26.1'
+api-version: '1.21'
 description: Economy plugin with market, auction house, and web dashboard.
 authors:
-  - APPLEPIE6969
+ - APPLEPIE6969
 softdepend: [Vault]
 
 commands:
@@ -80,4 +80,4 @@ permissions:
     default: true
 
 libraries:
-  - org.xerial:sqlite-jdbc:3.45.3.0
+ - org.xerial:sqlite-jdbc:3.45.3.0
