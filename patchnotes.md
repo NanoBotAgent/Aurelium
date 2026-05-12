@@ -6,7 +6,7 @@
 
 ### Platform Changes (from 26.1 branch)
 - **Java 21** instead of Java 25 (toolchain and `options.release` updated)
-- **Paper API `1.21.4-R0.1-SNAPSHOT`** instead of `26.1.2.build.53-stable`
+- **Paper API `1.21.11-R0.1-SNAPSHOT`** instead of `26.1.2.build.53-stable`
 - **`api-version: '1.21'`** in plugin.yml instead of `'26.1'`
 - **Enchantment lookup**: Uses `Registry.ENCHANTMENT.get(NamespacedKey.minecraft(...))` (Bukkit registry) instead of Paper's `RegistryAccess.registryAccess().getRegistry(RegistryKey.ENCHANTMENT)` which is 26.1-only
 - **Sweeping Edge**: Keeps original Bukkit name `SWEEPING_EDGE` (the `SWEEPING_COLLISION` rename only exists in MC 26.1+)
