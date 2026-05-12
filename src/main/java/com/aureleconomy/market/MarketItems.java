@@ -12,8 +12,7 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.NamespacedKey;
-import io.papermc.paper.registry.RegistryAccess;
-import io.papermc.paper.registry.RegistryKey;
+import org.bukkit.Registry;
 
 public class MarketItems {
 
@@ -111,13 +110,10 @@ public static class MarketEntry {
 
                 String bukkitName = enchName.toUpperCase().replace(" ", "_");
 
-                // Handle special cases where Bukkit names differ from in-game names
-                if (bukkitName.equals("SWEEPING_EDGE"))
-                        bukkitName = "SWEEPING_COLLISION";
+ // In 1.21.x, Bukkit name matches the in-game name directly
+ // (No rename needed — SWEEPING_EDGE is the correct Bukkit name)
 
-                Enchantment ench = RegistryAccess.registryAccess()
-                                .getRegistry(RegistryKey.ENCHANTMENT)
-                                .get(NamespacedKey.minecraft(bukkitName.toLowerCase()));
+ Enchantment ench = Registry.ENCHANTMENT.get(NamespacedKey.minecraft(bukkitName.toLowerCase()));
 
                 if (ench != null) {
                         meta.addStoredEnchant(ench, level, true);
