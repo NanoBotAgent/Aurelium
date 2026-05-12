@@ -2,9 +2,9 @@ name: Build and Test
 
 on:
   push:
-    branches: ["1.4.3", main, "fix/mysql-compat-and-auction-displayname"]
+    branches: ["1.4.3", main, "compat/paper-1.21"]
   pull_request:
-    branches: ["1.4.3", main, "fix/mysql-compat-and-auction-displayname"]
+    branches: ["1.4.3", main, "compat/paper-1.21"]
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ jobs:
     - name: Set up JDK 25
       uses: actions/setup-java@v5
       with:
-        java-version: '25'
+        java-version: '21'
         distribution: 'temurin'
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
@@ -35,11 +35,11 @@ jobs:
     steps:
     - uses: actions/setup-java@v5
       with:
-        java-version: '25'
+        java-version: '21'
         distribution: 'temurin'
-    - name: Download Paper 26.1.2 build 61
+    - name: Download Paper 1.21.4 build 232
       run: |
-        curl -sL "https://fill-data.papermc.io/v1/objects/980421a4f9c4b26f15a9d2fddd7fc91125fd91320d21e189d4504e70893a79e5/paper-26.1.2-61.jar" -o paper.jar
+        curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.4/builds/232/downloads/paper-1.21.4-232.jar" -o paper.jar
         ls -lh paper.jar
     - name: Download plugin artifact
       uses: actions/download-artifact@v4
@@ -144,11 +144,11 @@ jobs:
     steps:
     - uses: actions/setup-java@v5
       with:
-        java-version: '25'
+        java-version: '21'
         distribution: 'temurin'
-    - name: Download Paper 26.1.2 build 61
+    - name: Download Paper 1.21.4 build 232
       run: |
-        curl -sL "https://fill-data.papermc.io/v1/objects/980421a4f9c4b26f15a9d2fddd7fc91125fd91320d21e189d4504e70893a79e5/paper-26.1.2-61.jar" -o paper.jar
+        curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.4/builds/232/downloads/paper-1.21.4-232.jar" -o paper.jar
     - name: Download plugin artifact
       uses: actions/download-artifact@v4
       with:
@@ -487,11 +487,11 @@ jobs:
     - uses: actions/checkout@v4
     - uses: actions/setup-java@v5
       with:
-        java-version: '25'
+        java-version: '21'
         distribution: 'temurin'
-    - name: Download Paper 26.1.2 build 61
+    - name: Download Paper 1.21.4 build 232
       run: |
-        curl -sL "https://fill-data.papermc.io/v1/objects/980421a4f9c4b26f15a9d2fddd7fc91125fd91320d21e189d4504e70893a79e5/paper-26.1.2-61.jar" -o paper.jar
+        curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.4/builds/232/downloads/paper-1.21.4-232.jar" -o paper.jar
     - name: Download plugin artifact
       uses: actions/download-artifact@v4
       with:
