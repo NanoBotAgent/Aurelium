@@ -2,9 +2,9 @@ name: Build and Test
 
 on:
   push:
-    branches: ["1.4.3", main, "compat/paper-1.21"]
+    branches: ["1.4.3", main, "compat/paper-1.21", "feature/custom-item-scanner-1.21"]
   pull_request:
-    branches: ["1.4.3", main, "compat/paper-1.21"]
+    branches: ["1.4.3", main, "compat/paper-1.21", "feature/custom-item-scanner-1.21"]
 
 permissions:
   contents: read
