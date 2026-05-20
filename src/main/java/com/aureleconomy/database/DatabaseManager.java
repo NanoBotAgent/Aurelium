@@ -27,7 +27,7 @@ public class DatabaseManager {
 		return "mysql".equals(databaseType);
 	}
 
-    private static final int LATEST_SCHEMA_VERSION = 1;
+    private static final int LATEST_SCHEMA_VERSION = 2;
 
     public boolean initialize() {
         try {
@@ -225,6 +225,9 @@ public class DatabaseManager {
         switch (version) {
             case 1:
                 addColumnIfNotExists("players", "gui_style", "VARCHAR(16) DEFAULT 'MODERN'");
+ break;
+ case 2:
+ createCustomItemsTable();
                 addColumnIfNotExists("auctions", "listing_fee", "DOUBLE DEFAULT 0.0");
                 addColumnIfNotExists("auctions", "start_time", "LONG");
                 addColumnIfNotExists("auctions", "currency", "VARCHAR(32)");
