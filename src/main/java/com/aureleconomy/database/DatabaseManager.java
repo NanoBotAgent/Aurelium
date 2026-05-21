@@ -362,3 +362,4 @@ public class DatabaseManager {
  plugin.getComponentLogger().error("Could not create custom_items table for " + databaseType + "!", e);
  }
  }
+}
