@@ -358,10 +358,7 @@ public class DatabaseManager {
  "last_seen INTEGER NOT NULL" +
  ")");
  }
-
- createCustomItemsTable();
  } catch (SQLException e) {
  plugin.getComponentLogger().error("Could not create custom_items table for " + databaseType + "!", e);
  }
  }
-}
