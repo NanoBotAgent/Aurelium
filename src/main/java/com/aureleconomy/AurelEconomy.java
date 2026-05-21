@@ -82,6 +82,7 @@ public class AurelEconomy extends JavaPlugin {
      this.customItemRegistry = new CustomItemRegistry(this);
      this.unifiedScanner = new UnifiedItemScanner(this, customItemRegistry);
      customItemRegistry.loadFromDatabase(databaseManager);
+        customItemRegistry.loadConfigOverrides();
      getServer().getScheduler().runTaskLater(this, () -> {
          if (unifiedScanner != null) {
              unifiedScanner.scanAllPluginAPIs();
