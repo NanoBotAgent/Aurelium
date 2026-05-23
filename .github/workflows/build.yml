@@ -37,10 +37,10 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-      - name: Download Paper 1.21.4
+      - name: Download Paper 1.21.11
         run: |
-          LATEST_BUILD=$(curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.4/builds" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['builds'][-1]['build'])" 2>/dev/null || echo "248")
-          curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.4/builds/${LATEST_BUILD}/downloads/paper-1.21.4-${LATEST_BUILD}.jar" -o paper.jar || echo "Paper download failed, will check log"
+          LATEST_BUILD=$(curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['builds'][-1]['build'])" 2>/dev/null || echo "248")
+          curl -sL "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds/${LATEST_BUILD}/downloads/paper-1.21.11-${LATEST_BUILD}.jar" -o paper.jar || echo "Paper download failed, will check log"
           ls -lh paper.jar 2>/dev/null || echo "No paper.jar found"
       - name: Download plugin artifact
         uses: actions/download-artifact@v4
@@ -57,8 +57,7 @@ jobs:
             exit 0
           fi
           mkdir -p plugins
-          cp build/libs/*.jar plugins/ 2>/dev/null || true
-          java -Dpaper.playerconnection.keepalive=60 -Xmx512M -Xms512M -jar paper.jar --nogui --max-players=5 &
+                    java -Dpaper.playerconnection.keepalive=60 -Xmx512M -Xms512M -jar paper.jar --nogui --max-players=5 &
           SERVER_PID=$!
           TIMEOUT=120
           ELAPSED=0
