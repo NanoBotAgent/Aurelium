@@ -1,0 +1,6 @@
+name: MockStressItemsAdder
+version: 1.0.0
+main: mock.MockStressItemsAdder
+author: TestAuthor
+description: Mock stress test ItemsAdder plugin
+api-version: "1.21"

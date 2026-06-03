@@ -1,0 +1,6 @@
+name: MockInventoryGiver
+version: 1.0.0
+main: mock.InventoryGiver
+author: TestAuthor
+description: Mock inventory listener plugin for CI
+api-version: "1.21"

@@ -1,0 +1,6 @@
+name: MockMythicMobs
+version: 1.0.0
+main: mock.MockMythicMobs
+author: TestAuthor
+description: Mock MythicMobs plugin for CI testing
+api-version: "1.21"

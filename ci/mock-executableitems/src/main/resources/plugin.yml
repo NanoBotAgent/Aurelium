@@ -1,0 +1,11 @@
+name: MockExecutableItems
+version: 1.0.0
+main: mock.MockExecutableItems
+author: TestAuthor
+description: Mock ExecutableItems plugin for CI testing
+api-version: "1.21"
+
+commands:
+  mockei:
+    description: Mock executable items command
+    usage: /<command> <item>

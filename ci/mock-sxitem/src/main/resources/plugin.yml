@@ -1,0 +1,6 @@
+name: MockSXItem
+version: 1.0.0
+main: mock.MockSXItem
+author: TestAuthor
+description: Mock SX-Item plugin for CI testing
+api-version: "1.21"

@@ -1,0 +1,6 @@
+name: MockLoreGiver
+version: 1.0.0
+main: mock.MockLoreGiver
+author: TestAuthor
+description: Mock lore plugin for CI testing
+api-version: "1.21"

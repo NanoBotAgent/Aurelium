@@ -1,0 +1,6 @@
+name: MockPDCGiver
+version: 1.0.0
+main: mock.MockPDCGiver
+author: TestAuthor
+description: Mock PDC giver plugin for CI
+api-version: "1.21"

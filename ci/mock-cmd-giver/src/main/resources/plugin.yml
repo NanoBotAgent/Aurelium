@@ -1,4 +1,11 @@
 name: MockCMDGiver
 version: 1.0.0
 main: mock.MockCMDGiver
-author: Mock
+author: TestAuthor
+description: Mock plugin for CI testing
+api-version: "1.21"
+
+commands:
+  mockcmd:
+    description: Give mock items
+    usage: /<command> give

@@ -1,0 +1,6 @@
+name: MockInteractionGiver
+version: 1.0.0
+main: mock.InteractionGiver
+author: TestAuthor
+description: Mock interaction event plugin for CI
+api-version: "1.21"
