@@ -1,0 +1,4 @@
+name: MockCMDGiver
+version: 1.0.0
+main: mock.MockCMDGiver
+author: Mock
