@@ -54,14 +54,20 @@ def assert_test(name, condition, detail=""):
     global passed, failed, failed_tests
     if condition:
         passed += 1
-        print(f'  PASS: {name}')
+        print(f' PASS: {name}')
     else:
         failed += 1
         failed_tests.append(name)
-        print(f'  FAIL: {name} {detail}')
+        print(f' FAIL: {name} {detail}')
+
+# Read RCON config from environment or use defaults
+import os
+RCON_HOST = os.environ.get('RCON_HOST', '127.0.0.1')
+RCON_PORT = int(os.environ.get('RCON_PORT', '25575'))
+RCON_PASS = os.environ.get('RCON_PASSWORD', 'test')
 
 def run_cmd(cmd):
-    return rcon('127.0.0.1', 25575, 'testpass', cmd)
+    return rcon(RCON_HOST, RCON_PORT, RCON_PASS, cmd)
 
 print('=== In-Game RCON Tests (SQLite) ===')
 
