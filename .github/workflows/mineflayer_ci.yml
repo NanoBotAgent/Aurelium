@@ -52,13 +52,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install mineflayer dependencies
+        run: npm install --no-package-lock
+        working-directory: .github/scripts
       - name: Download Aurelium
         uses: actions/download-artifact@v4
         with:
           name: Aurelium-Mineflayer
           path: plugins
-      - name: Download dependencies
-        run: echo "Dependency download placeholder"
 
       - name: Download Paper
         run: |
@@ -112,6 +113,7 @@ jobs:
 
       - name: Run in-game tests via RCON
         run: |
+          node .github/scripts/mineflayer_test.js || true
           python3 .github/scripts/test_ingame_rcon.py
           RCON_EXIT=$?
           if [ "$RCON_EXIT" -ne 0 ]; then
