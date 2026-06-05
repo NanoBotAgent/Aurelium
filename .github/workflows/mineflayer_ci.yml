@@ -60,7 +60,6 @@ jobs:
         with:
           name: Aurelium-Mineflayer
           path: plugins
-
       - name: Download Paper
         run: |
           PAPER_URL="https://fill-data.papermc.io/v1/objects/${{ env.PAPER_JAR_SHA }}/paper-26.1.2-${{ env.PAPER_BUILD }}.jar"
@@ -70,14 +69,12 @@ jobs:
             echo "FAIL: paper.jar is empty or missing"
             exit 1
           fi
-
       - name: Download ViaVersion + ViaBackwards + Vault
         run: |
           curl -sL "${{ env.VIAVERSION_URL }}" -o plugins/ViaVersion.jar
           curl -sL "${{ env.VIABACKWARDS_URL }}" -o plugins/ViaBackwards.jar
           curl -sL "${{ env.VAULT_URL }}" -o plugins/Vault.jar
           ls -lh plugins/
-
       - name: Configure and start server
         run: |
           echo "eula=true" > eula.txt
@@ -91,11 +88,9 @@ jobs:
           rcon.port=25575
           rcon.password=test
           PROPS
-
           java -Xmx2G -jar paper.jar --nogui &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
-
           for i in $(seq 1 120); do
             if grep -q "Done (" logs/latest.log 2>/dev/null; then
               echo "Server started successfully!"
@@ -103,14 +98,12 @@ jobs:
             fi
             sleep 2
           done
-
           if ! grep -q "Done (" logs/latest.log 2>/dev/null; then
             echo "FAIL: Server did not start within 4 minutes"
             cat logs/latest.log 2>/dev/null | tail -50 || true
             kill $SERVER_PID 2>/dev/null || true
             exit 1
           fi
-
       - name: Run in-game tests via RCON
         run: |
           node .github/scripts/mineflayer_test.js || true
@@ -121,7 +114,6 @@ jobs:
             exit 1
           fi
           echo "RCON in-game test passed"
-
       - name: Dump server exceptions
         if: always()
         run: |
@@ -129,7 +121,6 @@ jobs:
             echo "=== Server exceptions ==="
             grep -i "exception\|error.*aurel\|severe" logs/latest.log | grep -vi "vault\|registration attempt\|PLEASE RESTART\|io_uring\|cloud dashboard" | head -30 || echo "No relevant exceptions found"
           fi
-
       - name: Stop server
         if: always()
         run: |
@@ -137,7 +128,6 @@ jobs:
             kill $SERVER_PID 2>/dev/null || true
             wait $SERVER_PID 2>/dev/null || true
           fi
-
       - name: Upload server log on failure
         if: failure()
         uses: actions/upload-artifact@v4
