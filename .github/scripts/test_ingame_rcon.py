@@ -74,6 +74,11 @@ def is_unknown_command(resp):
     r = resp.lower()
     return 'unknown or incomplete command' in r or 'unknown command' in r
 
+def is_not_found(resp):
+    """Check if the response indicates the item was not found (valid rejection for nonexistent IDs)."""
+    r = resp.lower()
+    return 'not found' in r or 'no custom item' in r or 'does not exist' in r or 'no item' in r
+
 print('=== In-Game RCON Tests (SQLite) ===')
 
 # --- /bal ---
@@ -120,13 +125,10 @@ assert_test('/eco rejects invalid action', 'Unknown' in resp or 'Usage' in resp,
 
 print('\nTest 10: /eco give TestPlayer -100')
 resp = strip_color(run_cmd('eco give TestPlayer -100'))
-# Paper/Bukkit may not parse negative args as part of the command — "Unknown or incomplete command"
-# means the command parser rejected the input, which is acceptable validation behavior
 assert_test('/eco rejects negative', 'positive' in resp.lower() or 'Positive' in resp or is_unknown_command(resp), f'resp={resp[:100]}')
 
 print('\nTest 11: /eco give TestPlayer abc')
 resp = strip_color(run_cmd('eco give TestPlayer abc'))
-# Non-numeric args cause command parser failure — "Unknown or incomplete command" is acceptable
 assert_test('/eco rejects non-numeric', 'Invalid' in resp or 'invalid' in resp or is_unknown_command(resp), f'resp={resp[:100]}')
 
 print('\nTest 12: /eco give TestPlayer')
@@ -153,9 +155,6 @@ assert_test('/web rejects console', 'player' in resp.lower() or len(resp) > 0, f
 
 print('Test 17: /ah')
 resp = strip_color(run_cmd('ah'))
-# Player-only commands may return "Unknown or incomplete command" from RCON
-# since RCON executes as console — this is acceptable as the command IS registered
-# but requires a player sender
 assert_test('/ah rejects console', 'Only players' in resp or 'player' in resp.lower() or is_unknown_command(resp), f'resp={resp[:100]}')
 
 print('Test 18: /ah sell 100')
@@ -194,15 +193,16 @@ assert_test('/customitems list responds', len(resp) > 0, f'resp={resp[:100]}')
 
 print('Test 26: /customitems info nonexistent_item')
 resp = strip_color(run_cmd('customitems info nonexistent_item'))
-assert_test('/customitems info rejects invalid id', 'not found' in resp.lower() or 'unknown' in resp.lower() or 'invalid' in resp.lower() or 'no item' in resp.lower() or 'does not exist' in resp.lower(), f'resp={resp[:100]}')
+# "No custom item found with ID: nonexistent_item" is a valid rejection
+assert_test('/customitems info rejects invalid id', is_not_found(resp) or 'unknown' in resp.lower() or 'invalid' in resp.lower(), f'resp={resp[:100]}')
 
 print('Test 27: /customitems toggle nonexistent_item')
 resp = strip_color(run_cmd('customitems toggle nonexistent_item'))
-assert_test('/customitems toggle rejects invalid id', 'not found' in resp.lower() or 'unknown' in resp.lower() or 'invalid' in resp.lower() or 'no item' in resp.lower() or 'does not exist' in resp.lower(), f'resp={resp[:100]}')
+assert_test('/customitems toggle rejects invalid id', is_not_found(resp) or 'unknown' in resp.lower() or 'invalid' in resp.lower(), f'resp={resp[:100]}')
 
 print('Test 28: /customitems price nonexistent_item 100 50')
 resp = strip_color(run_cmd('customitems price nonexistent_item 100 50'))
-assert_test('/customitems price rejects invalid id', 'not found' in resp.lower() or 'unknown' in resp.lower() or 'invalid' in resp.lower() or 'no item' in resp.lower() or 'does not exist' in resp.lower(), f'resp={resp[:100]}')
+assert_test('/customitems price rejects invalid id', is_not_found(resp) or 'unknown' in resp.lower() or 'invalid' in resp.lower(), f'resp={resp[:100]}')
 
 print('Test 29: /customitems price some_item')
 resp = strip_color(run_cmd('customitems price some_item'))
@@ -215,12 +215,12 @@ assert_test('/customitems reload responds', len(resp) > 0, f'resp={resp[:100]}')
 # Negative price validation (validates fix #9)
 print('Test 31: /customitems price nonexistent_item -5 10')
 resp = strip_color(run_cmd('customitems price nonexistent_item -5 10'))
-# Negative args may cause command parser rejection — acceptable
-assert_test('/customitems price rejects negative buy', 'not found' in resp.lower() or 'non-negative' in resp.lower() or 'must be' in resp.lower() or 'invalid' in resp.lower() or is_unknown_command(resp), f'resp={resp[:100]}')
+# Nonexistent item check happens before price validation — "not found" is valid rejection
+assert_test('/customitems price rejects negative buy', is_not_found(resp) or 'non-negative' in resp.lower() or 'must be' in resp.lower() or 'invalid' in resp.lower() or is_unknown_command(resp), f'resp={resp[:100]}')
 
 print('Test 32: /customitems price nonexistent_item 10 -5')
 resp = strip_color(run_cmd('customitems price nonexistent_item 10 -5'))
-assert_test('/customitems price rejects negative sell', 'not found' in resp.lower() or 'non-negative' in resp.lower() or 'must be' in resp.lower() or 'invalid' in resp.lower() or is_unknown_command(resp), f'resp={resp[:100]}')
+assert_test('/customitems price rejects negative sell', is_not_found(resp) or 'non-negative' in resp.lower() or 'must be' in resp.lower() or 'invalid' in resp.lower() or is_unknown_command(resp), f'resp={resp[:100]}')
 
 # Cleanup
 run_cmd('eco set TestPlayer 100')
