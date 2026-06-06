@@ -18,7 +18,7 @@ repositories {
 }
 
 dependencies {
- compileOnly("io.papermc.paper:paper-api:26.1.2.build.64-stable")
+ compileOnly("io.papermc.paper:paper-api:26.1.2.build.65-stable")
  compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
   exclude(group = "org.bukkit", module = "bukkit")
  }
@@ -27,7 +27,7 @@ dependencies {
  testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
  testImplementation("org.mockito:mockito-core:5.23.0")
  testImplementation("org.mockito:mockito-junit-jupiter:5.23.0")
- testImplementation("io.papermc.paper:paper-api:26.1.2.build.64-stable")
+ testImplementation("io.papermc.paper:paper-api:26.1.2.build.65-stable")
  testImplementation("net.kyori:adventure-api:4.17.0")
  testImplementation("com.github.MilkBowl:VaultAPI:1.7") {
   exclude(group = "org.bukkit", module = "bukkit")
