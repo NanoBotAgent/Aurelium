@@ -1,6 +1,5 @@
 package mock;
 
-import io.th0rgal.oraxen.api.OraxenItem;
 import io.th0rgal.oraxen.api.OraxenItems;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -8,12 +7,12 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public class MockOraxen implements JavaPlugin, Listener {
+public class MockOraxen extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
-        OraxenItems.getInstance();
-        getLogger().info("MockOraxen enabled!");
+        OraxenItems.registerDefaults();
+        getLogger().info("MockOraxen enabled with " + OraxenItems.getItems().size() + " items!");
     }
 
     @Override
