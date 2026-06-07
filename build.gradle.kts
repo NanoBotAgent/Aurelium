@@ -33,7 +33,9 @@ dependencies {
   exclude(group = "org.bukkit", module = "bukkit")
  }
  testRuntimeOnly("org.junit.platform:junit-platform-launcher")
- testRuntimeOnly("org.xerial:sqlite-jdbc:3.45.1.0")
+ testRuntimeOnly("org.xerial:sqlite-jdbc:3.45.3.0")
+ // byte-buddy-agent required for Mockito inline mock maker on JDK 25
+ testRuntimeOnly("net.bytebuddy:byte-buddy-agent:1.17.7")
 }
 
 spotbugs {
