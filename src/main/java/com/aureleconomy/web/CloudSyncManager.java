@@ -4,6 +4,8 @@ import com.aureleconomy.AurelEconomy;
 import com.aureleconomy.market.MarketItems;
 import com.aureleconomy.market.MarketItems.Category;
 import com.aureleconomy.market.MarketItems.MarketEntry;
+import com.aureleconomy.scanner.CustomItemRegistry;
+import com.aureleconomy.scanner.CustomMarketItem;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -41,25 +43,31 @@ public class CloudSyncManager {
     private final String baseUrl;
     private final String serverId;
     private final String apiKey;
+    private String prevApiKey;
+    private final String registrationSecret;
     private final int syncInterval;
 
     private BukkitTask syncTask;
     private BukkitTask purchaseTask;
     private BukkitTask priceHistoryTask;
     private boolean registered = false;
+    private boolean registrationFailed = false;
+    private int registrationFailureCount = 0;
+    private static final int MAX_REGISTRATION_FAILURES = 3;
 
     public CloudSyncManager(AurelEconomy plugin) {
         this.plugin = plugin;
         this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(60)) // 60s for Render cold start
+                .connectTimeout(Duration.ofSeconds(60))
                 .build();
 
-        this.baseUrl = plugin.getConfig().getString("web.cloud.url", "https://aurelium-web.onrender.com");
+        this.baseUrl = plugin.getConfig().getString("web.cloud.url", "https://webaureliummc.onrender.com");
         this.syncInterval = plugin.getConfig().getInt("web.cloud.sync-interval", 30);
 
-        // Auto-generate server-id and api-key if missing
         String id = plugin.getConfig().getString("web.cloud.server-id", "");
         String key = plugin.getConfig().getString("web.cloud.api-key", "");
+        String prevKey = plugin.getConfig().getString("web.cloud.prev-api-key", "");
+        String regSecret = plugin.getConfig().getString("web.cloud.registration-secret", "");
 
         if (id.isEmpty()) {
             id = UUID.randomUUID().toString().substring(0, 8);
@@ -74,27 +82,36 @@ public class CloudSyncManager {
 
         this.serverId = id;
         this.apiKey = key;
+        this.prevApiKey = prevKey;
+        this.registrationSecret = regSecret;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────
 
-    /** Register with the Render server and start sync loop. */
     public void start() {
-        // Register asynchronously with retries (Render free tier can take 30-60s to
-        // wake)
         attemptRegistration(1);
 
-        // Sync market data periodically (async) — also retries registration if needed
         long syncTicks = syncInterval * 20L;
         syncTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
-            if (!registered) {
-                // Try to register on each sync tick if not yet registered
+            if (!registered && !registrationFailed) {
                 try {
                     register();
                     registered = true;
+                    registrationFailureCount = 0; // Reset on success
                     plugin.getComponentLogger().info("Cloud dashboard registered (late) — server ID: " + serverId);
-                } catch (Exception ignored) {
-                    // Late registration attempt failure during periodic sync
+                } catch (Exception e) {
+                    String msg = e.getMessage();
+                    if (msg != null && (msg.contains("HTTP 403") || msg.contains("HTTP 401"))) {
+                        registrationFailureCount++;
+                        if (registrationFailureCount >= MAX_REGISTRATION_FAILURES) {
+                            registrationFailed = true;
+                            plugin.getComponentLogger().error("Cloud dashboard registration failed after " + MAX_REGISTRATION_FAILURES + " attempts (auth error): " + msg);
+                            plugin.getComponentLogger().error("Your server-id has a stale entry in the dashboard with a different API key.");
+                            plugin.getComponentLogger().error("Fix: Delete the old server entry from the dashboard at https://webaureliummc.onrender.com, or set web.cloud.registration-secret in config.yml to match the dashboard's REGISTRATION_SECRET env var.");
+                        } else {
+                            plugin.getComponentLogger().warn("Cloud dashboard registration failed (attempt " + registrationFailureCount + "/" + MAX_REGISTRATION_FAILURES + "): " + msg);
+                        }
+                    }
                     return;
                 }
             }
@@ -110,7 +127,6 @@ public class CloudSyncManager {
             }
         }, syncTicks, syncTicks);
 
-        // Poll for pending purchases every 2 seconds (on main thread for safety)
         purchaseTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (!registered)
                 return;
@@ -124,24 +140,20 @@ public class CloudSyncManager {
                     return Collections.<Map<String, Object>>emptyList();
                 }
             }).thenAccept(pending -> {
-                // Execute purchases on main thread
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     executePurchases(pending);
-                    // Trigger an immediate sync after processing purchases to update prices/balances on web
                     if (!pending.isEmpty()) {
                         CompletableFuture.runAsync(() -> {
                             try {
                                 syncMarketData();
                             } catch (Exception ignored) {
-                                // Optional immediate sync failure after purchase
                             }
                         });
                     }
                 });
             });
-        }, 40L, 40L); // 2 seconds
+        }, 40L, 40L);
 
-        // Record price snapshots every 10 minutes for stock charts
         priceHistoryTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
             if (!registered)
                 return;
@@ -150,28 +162,49 @@ public class CloudSyncManager {
             } catch (Exception e) {
                 plugin.getComponentLogger().warn("Price history snapshot failed: " + e.getMessage());
             }
-        }, 200L, 12000L); // Start after 10s, repeat every 10 min
+        }, 200L, 12000L);
     }
-
 
     private void attemptRegistration(int attempt) {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                plugin.getComponentLogger().info("Cloud dashboard: registering (attempt " + attempt + "/5)...");
+                plugin.getComponentLogger().info("Cloud dashboard: registering (attempt " + attempt + "/3)...");
                 register();
                 registered = true;
+                registrationFailureCount = 0; // Reset on success
                 plugin.getComponentLogger().info("Cloud dashboard registered — server ID: " + serverId);
-                // Do an initial sync immediately
                 try {
                     syncMarketData();
                 } catch (Exception ignored) {
                 }
             } catch (Exception e) {
-                plugin.getComponentLogger().warn("Registration attempt " + attempt + " failed: " + e.getMessage());
-                if (attempt < 5) {
-                    Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> attemptRegistration(attempt + 1), 300L);
+                String msg = e.getMessage();
+                if (msg != null && (msg.contains("HTTP 403") || msg.contains("HTTP 401"))) {
+                    registrationFailureCount++;
+                    if (registrationFailureCount >= MAX_REGISTRATION_FAILURES) {
+                        registrationFailed = true;
+                        plugin.getComponentLogger().error("Cloud dashboard registration failed after " + MAX_REGISTRATION_FAILURES + " attempts (auth error): " + msg);
+                        plugin.getComponentLogger().error("Your server-id has a stale entry in the dashboard with a different API key.");
+                        plugin.getComponentLogger().error("Fix: Delete the old server entry from the dashboard at https://webaureliummc.onrender.com, or set web.cloud.registration-secret in config.yml to match the dashboard's REGISTRATION_SECRET env var.");
+                    } else {
+                        plugin.getComponentLogger().warn("Cloud dashboard registration failed (attempt " + registrationFailureCount + "/" + MAX_REGISTRATION_FAILURES + "): " + msg);
+                        if (attempt < 3) {
+                            long delay = 300L * attempt;
+                            Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> attemptRegistration(attempt + 1), delay);
+                        }
+                    }
+                } else if (msg != null && (msg.contains("HTTP 4") || msg.contains("HTTP 5") || msg.contains("http 4") || msg.contains("http 5"))) {
+                    registrationFailed = true;
+                    plugin.getComponentLogger().error("Cloud dashboard registration failed (dashboard returned error): " + msg);
+                    plugin.getComponentLogger().error("Cloud dashboard disabled. Set web.cloud.url in config if you have a dashboard.");
                 } else {
-                    plugin.getComponentLogger().error("Failed to register with cloud dashboard after 5 attempts at " + baseUrl);
+                    plugin.getComponentLogger().error("Registration attempt " + attempt + " failed (transient): " + msg);
+                    if (attempt < 3) {
+                        long delay = 300L * attempt;
+                        Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> attemptRegistration(attempt + 1), delay);
+                    } else {
+                        plugin.getComponentLogger().error("Cloud dashboard registration gave up after " + attempt + " attempts");
+                    }
                 }
             }
         });
@@ -194,13 +227,11 @@ public class CloudSyncManager {
         return serverId;
     }
 
-    /** Build the dashboard URL for a player session. Posts session data async. */
     public String createSessionUrl(Player player) {
         byte[] tokenBytes = new byte[32];
         SECURE_RANDOM.nextBytes(tokenBytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
 
-        // Post session to Render asynchronously — frontend will retry until ready
         CompletableFuture.runAsync(() -> {
             try {
                 String sessionJson = buildPlayerJson(player, token);
@@ -213,19 +244,14 @@ public class CloudSyncManager {
         return baseUrl + "/shop/" + serverId + "?token=" + token;
     }
 
-    /** Pushes updated player balance to the web dashboard immediately. */
     public void updatePlayerBalance(Player player) {
         if (!registered) return;
-        
+
         CompletableFuture.runAsync(() -> {
             try {
-                // We use /api/session-update or similar if it exists, 
-                // but the current server also accepts session posts for existing tokens.
-                // However, the cleanest way is a dedicated balance update.
                 String json = buildPlayerJson(player, null);
                 postJson("/api/session-update", json);
             } catch (Exception e) {
-                // Silent failure for periodic updates to avoid log spam
             }
         });
     }
@@ -250,15 +276,15 @@ public class CloudSyncManager {
 
         StringBuilder json = new StringBuilder();
         json.append("{\"playerUuid\":\"").append(player.getUniqueId()).append("\"")
-           .append(",\"playerName\":\"").append(escJson(player.getName())).append("\"")
-           .append(",\"balances\":").append(balancesJson)
-           .append(",\"defaultCurrency\":\"").append(escJson(defaultCurrency)).append("\"")
-           .append(",\"serverId\":\"").append(escJson(serverId)).append("\"");
-        
+                .append(",\"playerName\":\"").append(escJson(player.getName())).append("\"")
+                .append(",\"balances\":").append(balancesJson)
+                .append(",\"defaultCurrency\":\"").append(escJson(defaultCurrency)).append("\"")
+                .append(",\"serverId\":\"").append(escJson(serverId)).append("\"");
+
         if (token != null) {
             json.append(",\"token\":\"").append(token).append("\"");
         }
-        
+
         json.append("}");
         return json.toString();
     }
@@ -270,10 +296,61 @@ public class CloudSyncManager {
 
         StringBuilder json = new StringBuilder();
         json.append("{\"serverId\":\"").append(escJson(serverId)).append("\"")
-            .append(",\"apiKey\":\"").append(escJson(apiKey)).append("\"")
-            .append(",\"serverName\":\"").append(escJson(serverName)).append("\"}");
+                .append(",\"apiKey\":\"").append(escJson(apiKey)).append("\"")
+                .append(",\"serverName\":\"").append(escJson(serverName)).append("\"}");
 
-        postJson("/api/register", json.toString());
+        String response = postJsonWithCurrentKey("/api/register", json.toString());
+
+        // If re-registered (key rotation), update prev-api-key to current key for future rotations
+        if (response.contains("\"reRegistered\":true")) {
+            plugin.getConfig().set("web.cloud.prev-api-key", apiKey);
+            plugin.saveConfig();
+            this.prevApiKey = apiKey;
+            plugin.getComponentLogger().info("Cloud dashboard: API key rotated, prev-api-key updated");
+        }
+    }
+
+    private String postJsonWithCurrentKey(String endpoint, String json) throws Exception {
+        HttpRequest.Builder req = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + endpoint))
+                .header("Content-Type", "application/json")
+                .header("X-Api-Key", apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .timeout(Duration.ofSeconds(60));
+
+        // Send previous API key as proof of ownership for key rotation
+        if (prevApiKey != null && !prevApiKey.isEmpty()) {
+            req.header("X-Current-Api-Key", prevApiKey);
+        }
+
+        // Send registration secret for authorized key rotation
+        if (registrationSecret != null && !registrationSecret.isEmpty()) {
+            req.header("X-Registration-Secret", registrationSecret);
+        }
+
+        HttpResponse<String> resp = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() >= 400) {
+            String body = resp.body();
+            if (resp.statusCode() == 503 && body.contains("\"queued\":true")) {
+                int posIndex = body.indexOf("\"position\":");
+                String pos = "?";
+                if (posIndex != -1) {
+                    int start = posIndex + 11;
+                    int end = body.indexOf("}", start);
+                    if (end != -1)
+                        pos = body.substring(start, end).trim();
+                }
+                throw new RuntimeException("Dashboard Waitlist active. Waiting in queue (Position: " + pos + ").");
+            }
+
+            if (resp.statusCode() == 403 && body.contains("Invalid server ID or API key")) {
+                this.registered = false;
+            }
+
+            String snippet = body.length() > 200 ? body.substring(0, 200) + "..." : body;
+            throw new RuntimeException("HTTP " + resp.statusCode() + " (" + endpoint + "): " + snippet);
+        }
+        return resp.body();
     }
 
     // ── Data Sync ────────────────────────────────────────────────────
@@ -341,7 +418,7 @@ public class CloudSyncManager {
         }
         json.append("}");
 
-        // ── Auctions ────────────────────────────────────────────────
+        // ── Auctions
         json.append(",\"auctions\":[");
         List<com.aureleconomy.auction.AuctionItem> auctions = plugin.getAuctionManager().getActiveAuctions();
         for (int i = 0; i < auctions.size(); i++) {
@@ -350,7 +427,6 @@ public class CloudSyncManager {
                 json.append(",");
             String sellerName = resolvePlayerName(ai.getSeller());
             String itemName = ai.getItem().getType().name().replace("_", " ");
-            // Use custom display name if present
             if (ai.getItem().hasItemMeta() && ai.getItem().getItemMeta().hasDisplayName()) {
                 itemName = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
                         .plainText().serialize(ai.getItem().getItemMeta().displayName());
@@ -366,6 +442,8 @@ public class CloudSyncManager {
             json.append(",\"currencySymbol\":\"")
                     .append(escJson(plugin.getEconomyManager().getCurrencySymbol(ai.getCurrency()))).append("\"");
             json.append(",\"isBin\":").append(ai.isBin());
+            json.append(",\"purchaseMode\":\"").append(escJson(ai.getPurchaseMode().name())).append("\"");
+            json.append(",\"remaining\":").append(ai.getAvailableQuantity());
             json.append(",\"expiration\":").append(ai.getExpiration());
             json.append(",\"startTime\":").append(ai.getStartTime());
             String bidderName = ai.getHighestBidder() != null ? resolvePlayerName(ai.getHighestBidder()) : "";
@@ -374,7 +452,7 @@ public class CloudSyncManager {
         }
         json.append("]");
 
-        // ── Buy Orders ──────────────────────────────────────────────
+        // ── Buy Orders
         json.append(",\"orders\":[");
         var orders = plugin.getOrderManager().getActiveOrders();
         int oi = 0;
@@ -398,13 +476,12 @@ public class CloudSyncManager {
         }
         json.append("]");
 
-        // ── Stocks / Price Tracker ──────────────────────────────────
+        // ── Stocks / Price Tracker
         json.append(",\"stocks\":[");
         List<MarketEntry> allStocks = new ArrayList<>(plugin.getMarketManager().getEntryCache().values());
         for (int i = 0; i < allStocks.size(); i++) {
             MarketEntry entry = allStocks.get(i);
 
-            // Skip blacklisted items
             if (plugin.getMarketManager().isBlacklisted(entry.material)) {
                 continue;
             }
@@ -421,14 +498,12 @@ public class CloudSyncManager {
             BigDecimal sellPrice = plugin.getMarketManager().getSellPrice(priceKey);
             BigDecimal basePrice = entry.price;
 
-            // Non-market items: use last sold price
             if (basePrice.compareTo(BigDecimal.ONE) == 0 && buyPrice.compareTo(BigDecimal.ONE) <= 0) {
                 BigDecimal lastSold = plugin.getOrderManager().getLastSoldPrice(priceKey);
                 if (lastSold != null) {
                     buyPrice = lastSold;
                     sellPrice = lastSold;
                 } else if (buyPrice.compareTo(BigDecimal.ONE) == 0) {
-                    // It's unvalued
                     buyPrice = BigDecimal.ZERO;
                     sellPrice = BigDecimal.ZERO;
                 }
@@ -436,7 +511,6 @@ public class CloudSyncManager {
 
             BigDecimal change = BigDecimal.ZERO;
             if (basePrice.compareTo(BigDecimal.ZERO) > 0 && buyPrice.compareTo(BigDecimal.ZERO) > 0 && basePrice.compareTo(BigDecimal.ONE) != 0) {
-                // ((buyPrice - basePrice) / basePrice) * 100
                 change = buyPrice.subtract(basePrice)
                         .multiply(BigDecimal.valueOf(100))
                         .divide(basePrice, 4, RoundingMode.HALF_UP);
@@ -459,7 +533,34 @@ public class CloudSyncManager {
         }
         json.append("]");
 
-        // ── Price History (for charts) ──────────────────────────────
+        // ── Custom Items (scanner)
+        CustomItemRegistry registry = plugin.getCustomItemRegistry();
+        boolean hasCustomItems = registry != null && !registry.isEmpty();
+        json.append(",\"hasCustomItems\":").append(hasCustomItems);
+        if (hasCustomItems) {
+            json.append(",\"customItems\":[");
+            int ci = 0;
+            for (CustomMarketItem cmi : registry.getAllItems()) {
+                if (ci++ > 0) json.append(",");
+                String cName = cmi.getDisplayName() != null ? cmi.getDisplayName() : cmi.getCanonicalId();
+                String material = cmi.getItemStack().getType().name().toLowerCase();
+                BigDecimal buy = cmi.getBuyPrice();
+                BigDecimal sell = cmi.getSellPrice();
+                String currency = plugin.getEconomyManager().getDefaultCurrency();
+                String symbol = plugin.getEconomyManager().getCurrencySymbol(currency);
+                json.append("{\"id\":\"").append(escJson(cmi.getCanonicalId())).append("\"");
+                json.append(",\"name\":\"").append(escJson(cName)).append("\"");
+                json.append(",\"material\":\"").append(escJson(material)).append("\"");
+                json.append(",\"buyPrice\":").append(buy.doubleValue());
+                json.append(",\"sellPrice\":").append(sell.doubleValue());
+                json.append(",\"currency\":\"").append(escJson(currency)).append("\"");
+                json.append(",\"currencySymbol\":\"").append(escJson(symbol)).append("\"");
+                json.append("}");
+            }
+            json.append("]");
+        }
+
+        // ── Price History
         json.append(",\"priceHistory\":");
         json.append(loadPriceHistoryJson());
 
@@ -468,7 +569,6 @@ public class CloudSyncManager {
         postJson("/api/sync", json.toString());
     }
 
-    /** Resolve a UUID to a player name (online check + Bukkit cache). */
     private String resolvePlayerName(java.util.UUID uuid) {
         org.bukkit.entity.Player online = Bukkit.getPlayer(uuid);
         if (online != null)
@@ -479,7 +579,6 @@ public class CloudSyncManager {
 
     // ── Price History ────────────────────────────────────────────────
 
-    /** Record a snapshot of all item prices into the database. */
     private void recordPriceSnapshot() {
         long now = System.currentTimeMillis();
         List<MarketEntry> allItems = MarketItems.getItems(Category.ALL_ITEMS).stream()
@@ -487,14 +586,13 @@ public class CloudSyncManager {
                 .toList();
 
         try (var conn = plugin.getDatabaseManager().getConnection();
-                var ps = conn.prepareStatement(
-                        "INSERT INTO price_history (item_key, buy_price, sell_price, timestamp) VALUES (?, ?, ?, ?)")) {
+             var ps = conn.prepareStatement(
+                     "INSERT INTO price_history (item_key, buy_price, sell_price, timestamp) VALUES (?, ?, ?, ?)")) {
             for (MarketEntry entry : allItems) {
                 String priceKey = (entry.customName != null) ? entry.customName : entry.material.name();
                 BigDecimal buyPrice = plugin.getMarketManager().getBuyPrice(priceKey);
                 BigDecimal sellPrice = plugin.getMarketManager().getSellPrice(priceKey);
 
-                // Skip non-market items with default prices
                 if (entry.price.compareTo(BigDecimal.ONE) == 0 && buyPrice.compareTo(BigDecimal.ONE) == 0)
                     continue;
 
@@ -509,9 +607,8 @@ public class CloudSyncManager {
             plugin.getComponentLogger().warn("Price history record failed: " + e.getMessage());
         }
 
-        // Clean old data (keep 7 days)
         try (var conn = plugin.getDatabaseManager().getConnection();
-                var ps = conn.prepareStatement("DELETE FROM price_history WHERE timestamp < ?")) {
+             var ps = conn.prepareStatement("DELETE FROM price_history WHERE timestamp < ?")) {
             ps.setLong(1, now - 7L * 24 * 60 * 60 * 1000);
             ps.executeUpdate();
         } catch (Exception e) {
@@ -519,18 +616,13 @@ public class CloudSyncManager {
         }
     }
 
-    /**
-     * Load price history from DB as JSON object: { "DIAMOND": [{t:123,b:50,s:40},
-     * ...], ... }
-     */
     private String loadPriceHistoryJson() {
         StringBuilder sb = new StringBuilder("{");
-        // Query last 7 days, grouped by item
         long cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000;
         try (var conn = plugin.getDatabaseManager().getConnection();
-                var ps = conn.prepareStatement(
-                        "SELECT item_key, buy_price, sell_price, timestamp FROM price_history " +
-                                "WHERE timestamp > ? ORDER BY timestamp ASC")) {
+             var ps = conn.prepareStatement(
+                     "SELECT item_key, buy_price, sell_price, timestamp FROM price_history " +
+                             "WHERE timestamp > ? ORDER BY timestamp ASC")) {
             ps.setLong(1, cutoff);
             var rs = ps.executeQuery();
 
@@ -542,9 +634,9 @@ public class CloudSyncManager {
                 long ts = rs.getLong("timestamp");
                 StringBuilder entry = new StringBuilder();
                 entry.append("{\"t\":").append(ts)
-                     .append(",\"b\":").append(bp)
-                     .append(",\"s\":").append(sp)
-                     .append("}");
+                        .append(",\"b\":").append(bp)
+                        .append(",\"s\":").append(sp)
+                        .append("}");
                 grouped.computeIfAbsent(key, k -> new ArrayList<>())
                         .add(entry.toString());
             }
@@ -567,9 +659,6 @@ public class CloudSyncManager {
     // ── Purchase Polling ─────────────────────────────────────────────
 
     private List<Map<String, Object>> fetchPendingPurchases() throws Exception {
-        // The sync endpoint returns pending purchases in its response
-        // But we can also use a dedicated call — for now, sync response is enough
-        // This manual poll is a fallback
         String url = baseUrl + "/api/sync?serverId=" + serverId;
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -584,7 +673,6 @@ public class CloudSyncManager {
         if (resp.statusCode() != 200)
             return Collections.emptyList();
 
-        // Parse pendingPurchases from response
         String body = resp.body();
         if (body.contains("\"pendingPurchases\":[")) {
             return parsePendingPurchases(body);
@@ -592,12 +680,24 @@ public class CloudSyncManager {
         return Collections.emptyList();
     }
 
-    private final Set<String> processedPurchases = Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+    /** Time-based expiry for processed purchase IDs. Key = purchaseId, Value = timestamp. */
+    private final Map<String, Long> processedPurchases = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long PURCHASE_EXPIRY_MS = 600_000L; // 10 minutes
 
     private void executePurchases(List<Map<String, Object>> pending) {
+        long now = System.currentTimeMillis();
+
+        // Purge expired entries
+        var iter = processedPurchases.entrySet().iterator();
+        while (iter.hasNext()) {
+            if (now - iter.next().getValue() > PURCHASE_EXPIRY_MS) {
+                iter.remove();
+            }
+        }
+
         for (Map<String, Object> purchase : pending) {
             String purchaseId = (String) purchase.get("id");
-            if (processedPurchases.contains(purchaseId)) continue;
+            if (purchaseId != null && processedPurchases.containsKey(purchaseId)) continue;
 
             String playerUuid = (String) purchase.get("playerUuid");
             String type = (String) purchase.getOrDefault("type", "buy");
@@ -608,49 +708,35 @@ public class CloudSyncManager {
                 continue;
             }
 
-            processedPurchases.add(purchaseId);
+            processedPurchases.put(purchaseId, now);
 
-            if ("bid".equals(type)) {
+            if ("bin".equals(type)) {
+                executeAuctionWebBinPurchase(player, purchase, purchaseId);
+            } else if ("bid".equals(type)) {
                 executeAuctionWebBid(player, purchase, purchaseId);
             } else if ("fill_order".equals(type)) {
                 executeOrderWebFill(player, purchase, purchaseId);
             } else {
                 executeMarketWebBuy(player, purchase, purchaseId);
             }
-            
-            // Periodically clear old processed purchases (e.g., if set gets too large)
-            if (processedPurchases.size() > 1000) {
-                processedPurchases.clear();
-            }
         }
     }
 
-    private void executeAuctionWebBid(Player player, Map<String, Object> purchase, String purchaseId) {
-        int auctionId = 0;
-        if (purchase.get("auctionId") instanceof Number) {
-            auctionId = ((Number) purchase.get("auctionId")).intValue();
-        } else if (purchase.get("auctionId") instanceof String) {
-            try {
-                auctionId = Integer.parseInt(purchase.get("auctionId").toString());
-            } catch (Exception ignored) {
-                // Fallback parsing for auctionId
-            }
-        }
-
-        BigDecimal amount = BigDecimal.ZERO;
-        if (purchase.get("amount") instanceof Number) {
-            amount = BigDecimal.valueOf(((Number) purchase.get("amount")).doubleValue());
-        } else if (purchase.get("amount") instanceof String) {
-            try {
-                amount = new BigDecimal(purchase.get("amount").toString());
-            } catch (Exception ignored) {
-                // Fallback parsing for amount
-            }
-        }
+    /**
+     * Handle BIN auction purchases from the web dashboard.
+     * Reads the "quantity" field for UNIT mode, or buys full stack for STACK mode.
+     */
+    private void executeAuctionWebBinPurchase(Player player, Map<String, Object> purchase, String purchaseId) {
+        int auctionId = parseFieldInt(purchase, "auctionId", 0);
 
         com.aureleconomy.auction.AuctionItem auction = plugin.getAuctionManager().getAuctionById(auctionId);
         if (auction == null || auction.isEnded()) {
             confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Auction ended or invalid");
+            return;
+        }
+
+        if (!auction.isBin()) {
+            executeAuctionWebBid(player, purchase, purchaseId);
             return;
         }
 
@@ -659,30 +745,53 @@ public class CloudSyncManager {
             return;
         }
 
-        if (!plugin.getEconomyManager().has(player, amount, auction.getCurrency())) {
-            confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Not enough funds");
-            return;
-        }
+        if (auction.getPurchaseMode() == com.aureleconomy.auction.AuctionItem.PurchaseMode.UNIT) {
+            // UNIT mode: buy specific quantity
+            int quantity = parseFieldInt(purchase, "quantity", 1);
+            quantity = Math.max(1, Math.min(quantity, auction.getAvailableQuantity()));
 
-        if (auction.isBin()) {
-            if (amount.compareTo(auction.getPrice()) < 0) {
-                confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Amount below BIN price");
+            BigDecimal unitPrice = auction.getPricePerUnit();
+            BigDecimal totalCost = unitPrice.multiply(BigDecimal.valueOf(quantity))
+                    .setScale(2, RoundingMode.HALF_UP);
+            String currency = auction.getCurrency();
+
+            if (!plugin.getEconomyManager().has(player, totalCost, currency)) {
+                confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Not enough funds");
                 return;
             }
+
+            int purchased = plugin.getAuctionManager().purchaseUnits(auction, player, quantity);
+            if (purchased <= 0) {
+                confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Purchase failed");
+                return;
+            }
+
+            BigDecimal newBalance = plugin.getEconomyManager().getBalance(player, currency);
+            String formatted = plugin.getEconomyManager().getFormattedWithSymbol(totalCost, currency);
+            confirmPurchase(purchaseId, true, newBalance, formatted);
+        } else {
+            // STACK mode: buy entire stack
+            BigDecimal totalCost = auction.getPrice();
+            String currency = auction.getCurrency();
+
+            if (!plugin.getEconomyManager().has(player, totalCost, currency)) {
+                confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Not enough funds");
+                return;
+            }
+
             if (!com.aureleconomy.utils.InventoryUtils.hasSpace(player.getInventory(), auction.getItem(),
                     auction.getItem().getAmount())) {
                 confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Inventory full");
                 return;
             }
 
-            // ATOMIC CLAIM
             if (!plugin.getAuctionManager().claimAuctionAtomic(auction.getId())) {
                 confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Auction already sold");
                 return;
             }
 
-            plugin.getEconomyManager().withdraw(player, amount, auction.getCurrency());
-            plugin.getAuctionManager().bid(auction, player.getUniqueId(), amount);
+            plugin.getEconomyManager().withdraw(player, totalCost, currency);
+            plugin.getAuctionManager().bid(auction, player.getUniqueId(), totalCost);
             plugin.getAuctionManager().endAuction(auction);
             player.getInventory().addItem(auction.getItem().clone());
             plugin.getAuctionManager().markCollectedAtomic(auction.getId());
@@ -690,27 +799,79 @@ public class CloudSyncManager {
             player.sendMessage(MM.deserialize("<green><bold>✔</bold> Web purchase: <white>"
                     + auction.getItem().getAmount() + "x " + auction.getItem().getType().name().replace("_", " ")
                     + "</white> from Auction House</green>"));
-        } else {
-            if (amount.compareTo(auction.getPrice()) <= 0) {
-                confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Bid must be higher than current price");
-                return;
-            }
-            plugin.getAuctionManager().bid(auction, player.getUniqueId(), amount);
-            player.sendMessage(MM.deserialize("<green><bold>✔</bold> Web bid placed: <gold>"
-                    + plugin.getEconomyManager().getFormattedWithSymbol(amount, auction.getCurrency()) + "</gold> on <white>"
-                    + auction.getItem().getType().name().replace("_", " ") + "</white></green>"));
+
+            BigDecimal newBalance = plugin.getEconomyManager().getBalance(player, currency);
+            String formatted = plugin.getEconomyManager().getFormattedWithSymbol(totalCost, currency);
+            confirmPurchase(purchaseId, true, newBalance, formatted);
         }
+    }
+
+    /**
+     * Handle auction BIDS (non-BIN) from the web dashboard.
+     */
+    private void executeAuctionWebBid(Player player, Map<String, Object> purchase, String purchaseId) {
+        int auctionId = parseFieldInt(purchase, "auctionId", 0);
+        BigDecimal amount = parseFieldBigDecimal(purchase, "amount", BigDecimal.ZERO);
+
+        com.aureleconomy.auction.AuctionItem auction = plugin.getAuctionManager().getAuctionById(auctionId);
+        if (auction == null || auction.isEnded()) {
+            confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Auction ended or invalid");
+            return;
+        }
+
+        if (auction.getSeller().equals(player.getUniqueId())) {
+            confirmPurchase(purchaseId, false, BigDecimal.ZERO, "You cannot bid on your own auction");
+            return;
+        }
+
+        if (auction.isBin()) {
+            executeAuctionWebBinPurchase(player, purchase, purchaseId);
+            return;
+        }
+
+        if (!plugin.getEconomyManager().has(player, amount, auction.getCurrency())) {
+            confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Not enough funds");
+            return;
+        }
+
+        if (amount.compareTo(auction.getPrice()) <= 0) {
+            confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Bid must be higher than current price");
+            return;
+        }
+        plugin.getAuctionManager().bid(auction, player.getUniqueId(), amount);
+        player.sendMessage(MM.deserialize("<green><bold>✔</bold> Web bid placed: <gold>"
+                + plugin.getEconomyManager().getFormattedWithSymbol(amount, auction.getCurrency()) + "</gold> on <white>"
+                + auction.getItem().getType().name().replace("_", " ") + "</white></green>"));
 
         BigDecimal newBalance = plugin.getEconomyManager().getBalance(player, auction.getCurrency());
         String formatted = plugin.getEconomyManager().getFormattedWithSymbol(amount, auction.getCurrency());
         confirmPurchase(purchaseId, true, newBalance, formatted);
     }
 
+    /** Parse an int field from the purchase map, with fallback. */
+    private int parseFieldInt(Map<String, Object> map, String key, int defaultVal) {
+        Object val = map.get(key);
+        if (val instanceof Number) return ((Number) val).intValue();
+        if (val instanceof String) {
+            try { return Integer.parseInt((String) val); } catch (Exception ignored) {}
+        }
+        return defaultVal;
+    }
+
+    /** Parse a BigDecimal field from the purchase map, with fallback. */
+    private BigDecimal parseFieldBigDecimal(Map<String, Object> map, String key, BigDecimal defaultVal) {
+        Object val = map.get(key);
+        if (val instanceof Number) return BigDecimal.valueOf(((Number) val).doubleValue());
+        if (val instanceof String) {
+            try { return new BigDecimal((String) val); } catch (Exception ignored) {}
+        }
+        return defaultVal;
+    }
+
     private void executeMarketWebBuy(Player player, Map<String, Object> purchase, String purchaseId) {
         String itemKey = (String) purchase.get("item");
-        int amount = ((Number) purchase.get("amount")).intValue();
+        int amount = parseFieldInt(purchase, "amount", 1);
 
-        // Resolve item
         BigDecimal buyPrice;
         String currency;
         Material material;
@@ -743,7 +904,6 @@ public class CloudSyncManager {
             return;
         }
 
-        // Execute purchase
         plugin.getEconomyManager().withdraw(player, totalCost, currency);
         player.getInventory().addItem(toGive);
         plugin.getMarketManager().onTransaction(itemKey, true, amount);
@@ -760,34 +920,15 @@ public class CloudSyncManager {
     }
 
     private void executeOrderWebFill(Player seller, Map<String, Object> purchase, String purchaseId) {
-        int orderId = 0;
-        if (purchase.get("orderId") instanceof Number) {
-            orderId = ((Number) purchase.get("orderId")).intValue();
-        } else if (purchase.get("orderId") instanceof String) {
-            try {
-                orderId = Integer.parseInt((String) purchase.get("orderId"));
-            } catch (Exception ignored) {
-                // Fallback parsing for orderId
-            }
-        }
+        int orderId = parseFieldInt(purchase, "orderId", 0);
 
-        int amount = 0;
-        if (purchase.get("amount") instanceof Number) {
-            amount = ((Number) purchase.get("amount")).intValue();
-        } else if (purchase.get("amount") instanceof String) {
-            try {
-                amount = Integer.parseInt((String) purchase.get("amount"));
-            } catch (Exception ignored) {
-                // Fallback parsing for amount
-            }
-        }
+        int amount = parseFieldInt(purchase, "amount", 0);
 
         if (amount <= 0) {
             confirmPurchase(purchaseId, false, BigDecimal.ZERO, "Amount must be positive");
             return;
         }
 
-        // Find the active order
         com.aureleconomy.orders.BuyOrder order = null;
         for (com.aureleconomy.orders.BuyOrder o : plugin.getOrderManager().getActiveOrders()) {
             if (o.getId() == orderId) {
@@ -806,7 +947,6 @@ public class CloudSyncManager {
             return;
         }
 
-        // Verify seller has the items
         int playerHas = 0;
         for (ItemStack item : seller.getInventory().getContents()) {
             if (item != null && item.getType() == order.getMaterial()) {
@@ -832,10 +972,10 @@ public class CloudSyncManager {
             try {
                 StringBuilder json = new StringBuilder();
                 json.append("{\"purchaseId\":\"").append(escJson(purchaseId)).append("\"")
-                    .append(",\"serverId\":\"").append(escJson(serverId)).append("\"")
-                    .append(",\"success\":").append(success)
-                    .append(",\"newBalance\":").append(newBalance != null ? newBalance.doubleValue() : 0)
-                    .append(",\"spent\":\"").append(escJson(spent)).append("\"}");
+                        .append(",\"serverId\":\"").append(escJson(serverId)).append("\"")
+                        .append(",\"success\":").append(success)
+                        .append(",\"newBalance\":").append(newBalance != null ? newBalance.doubleValue() : 0)
+                        .append(",\"spent\":\"").append(escJson(spent)).append("\"}");
                 postJson("/api/confirm-purchase", json.toString());
             } catch (Exception e) {
                 plugin.getComponentLogger().warn("Failed to confirm purchase: " + e.getMessage());
@@ -858,7 +998,6 @@ public class CloudSyncManager {
         if (resp.statusCode() >= 400) {
             String body = resp.body();
             if (resp.statusCode() == 503 && body.contains("\"queued\":true")) {
-                // ... (existing queue logic)
                 int posIndex = body.indexOf("\"position\":");
                 String pos = "?";
                 if (posIndex != -1) {
@@ -870,28 +1009,30 @@ public class CloudSyncManager {
                 throw new RuntimeException("Dashboard Waitlist active. Waiting in queue (Position: " + pos + ").");
             }
 
-            // If Render server restarted, it loses memory and returns 403. Force re-registration.
             if (resp.statusCode() == 403 && body.contains("Invalid server ID or API key")) {
                 this.registered = false;
             }
 
-            // Truncate body if it's too long (Prevents HTML spam in logs)
             String snippet = body.length() > 200 ? body.substring(0, 200) + "..." : body;
             throw new RuntimeException("HTTP " + resp.statusCode() + " (" + endpoint + "): " + snippet);
         }
         return resp.body();
     }
 
+    /**
+     * Escape JSON string values. Covers all required control characters.
+     */
     private static String escJson(String s) {
         if (s == null)
             return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t")
+                .replace("\b", "\\b")
+                .replace("\f", "\\f");
     }
-
-    /**
-     * Very simple JSON parser for the pendingPurchases array.
-     * Avoids external dependencies (Gson, Jackson).
-     */
 
     private List<Map<String, Object>> parsePendingPurchases(String jsonBody) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -906,7 +1047,6 @@ public class CloudSyncManager {
         String arrStr = jsonBody.substring(arrStart + 1, arrEnd).trim();
         if (arrStr.isEmpty()) return result;
 
-        // Split by "},{" but handle whitespace
         String[] objects = arrStr.split("\\}\\s*,\\s*\\{");
         for (String obj : objects) {
             obj = obj.replace("{", "").replace("}", "").trim();
